@@ -4,13 +4,40 @@
 # Directories
 export STEAMCMD_DIR="/home/steam/steamcmd"
 export ARK_BASE_DIR="/home/steam/ark-server"
-export ARK_SERVER_DIR="${ARK_BASE_DIR}/steamapps/common/ARK Survival Ascended Dedicated Server"
 export STATUS_DIR="/home/steam/status"
 export LOGS_DIR="/home/steam/logs"
 export CLUSTER_DIR="/home/steam/ark-cluster"
 
 # ARK App ID for SteamCMD
 export ARK_APP_ID="2430930"
+
+# Find the ARK server directory dynamically (SteamCMD creates variable folder names)
+find_ark_server_dir() {
+    local search_path="${ARK_BASE_DIR}/steamapps/common"
+    if [ -d "$search_path" ]; then
+        # Look for the ArkAscendedServer.exe to find the correct folder
+        local exe_path
+        exe_path=$(find "$search_path" -name "ArkAscendedServer.exe" -type f 2>/dev/null | head -1)
+        if [ -n "$exe_path" ]; then
+            # Return the directory containing ShooterGame (3 levels up from exe)
+            dirname "$(dirname "$(dirname "$(dirname "$exe_path")")")"
+            return 0
+        fi
+        # Try finding any folder with ShooterGame
+        local shooter_path
+        shooter_path=$(find "$search_path" -type d -name "ShooterGame" 2>/dev/null | head -1)
+        if [ -n "$shooter_path" ]; then
+            dirname "$shooter_path"
+            return 0
+        fi
+    fi
+    # Fallback to expected path
+    echo "${ARK_BASE_DIR}/steamapps/common/ARK Survival Ascended Dedicated Server"
+}
+
+# Set ARK_SERVER_DIR - will be updated after installation
+export ARK_SERVER_DIR
+ARK_SERVER_DIR=$(find_ark_server_dir)
 
 # Status file paths
 export STATUS_FILE="${STATUS_DIR}/server.status"
@@ -223,6 +250,8 @@ clear_pid() {
 
 # Check if server binary exists
 server_installed() {
+    # Re-detect ARK_SERVER_DIR in case it was just installed
+    ARK_SERVER_DIR=$(find_ark_server_dir)
     [ -f "${ARK_SERVER_DIR}/ShooterGame/Binaries/Win64/ArkAscendedServer.exe" ]
 }
 

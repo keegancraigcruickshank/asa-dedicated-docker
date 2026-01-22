@@ -130,6 +130,27 @@ if [ $STEAMCMD_EXIT -ne 0 ]; then
     exit 1
 fi
 
+# Re-detect ARK_SERVER_DIR after installation
+ARK_SERVER_DIR=$(find_ark_server_dir)
+log_info "Detected server directory: ${ARK_SERVER_DIR}"
+
+# Debug: Show what was installed if binary not found
+if [ ! -f "${ARK_SERVER_DIR}/ShooterGame/Binaries/Win64/ArkAscendedServer.exe" ]; then
+    log_warn "Binary not found at expected path, listing installed content:"
+    if [ -d "${ARK_BASE_DIR}/steamapps/common" ]; then
+        log_info "Contents of ${ARK_BASE_DIR}/steamapps/common:"
+        ls -1 "${ARK_BASE_DIR}/steamapps/common" 2>/dev/null | while read -r dir; do
+            log_info "  - $dir"
+        done
+    else
+        log_warn "Directory ${ARK_BASE_DIR}/steamapps/common does not exist"
+        log_info "Contents of ${ARK_BASE_DIR}:"
+        ls -1 "${ARK_BASE_DIR}" 2>/dev/null | while read -r item; do
+            log_info "  - $item"
+        done
+    fi
+fi
+
 # Verify installation
 if server_installed; then
     log_info "Server installation/update completed successfully"
