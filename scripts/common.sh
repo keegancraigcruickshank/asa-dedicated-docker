@@ -2,8 +2,9 @@
 # Common functions and utilities for ARK server scripts
 
 # Directories
-export ARK_SERVER_DIR="/home/steam/ark-server"
 export STEAMCMD_DIR="/home/steam/steamcmd"
+export ARK_BASE_DIR="/home/steam/ark-server"
+export ARK_SERVER_DIR="${ARK_BASE_DIR}/steamapps/common/ARK Survival Ascended Dedicated Server"
 export STATUS_DIR="/home/steam/status"
 export LOGS_DIR="/home/steam/logs"
 export CLUSTER_DIR="/home/steam/ark-cluster"

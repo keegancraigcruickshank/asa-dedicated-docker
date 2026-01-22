@@ -30,7 +30,7 @@ else
 fi
 
 log_info "App ID: ${ARK_APP_ID}"
-log_info "Install directory: ${ARK_SERVER_DIR}"
+log_info "Install directory: ${ARK_BASE_DIR}"
 
 # Track current phase
 CURRENT_PHASE="init"
@@ -40,7 +40,7 @@ LAST_PROGRESS=""
 log_info "Starting SteamCMD..."
 
 ${STEAMCMD_DIR}/steamcmd.sh \
-    +force_install_dir "${ARK_SERVER_DIR}" \
+    +force_install_dir "${ARK_BASE_DIR}" \
     +login anonymous \
     +app_update ${ARK_APP_ID} ${VALIDATE_FLAG} \
     +quit 2>&1 | while IFS= read -r line; do
@@ -135,7 +135,7 @@ if server_installed; then
     log_info "Server installation/update completed successfully"
 
     # Get installed version info (if available)
-    MANIFEST_FILE="${ARK_SERVER_DIR}/steamapps/appmanifest_${ARK_APP_ID}.acf"
+    MANIFEST_FILE="${ARK_BASE_DIR}/steamapps/appmanifest_${ARK_APP_ID}.acf"
     if [ -f "$MANIFEST_FILE" ]; then
         BUILD_ID=$(grep -oP '"buildid"\s+"\K[^"]+' "$MANIFEST_FILE" 2>/dev/null || echo "unknown")
         log_info "Installed build ID: ${BUILD_ID}"
@@ -145,6 +145,78 @@ if server_installed; then
 
         # Write update status
         echo "{\"success\": true, \"build_id\": \"${BUILD_ID}\", \"timestamp\": \"$(date -Iseconds)\"}" > "${UPDATE_STATUS_FILE}"
+    fi
+
+    # Create default config files if they don't exist (first install)
+    CONFIG_DIR="${ARK_SERVER_DIR}/ShooterGame/Saved/Config/WindowsServer"
+    if [ ! -d "${CONFIG_DIR}" ]; then
+        log_info "Creating default configuration files..."
+        mkdir -p "${CONFIG_DIR}"
+
+        # Create default GameUserSettings.ini
+        cat > "${CONFIG_DIR}/GameUserSettings.ini" <<'EOF'
+[ServerSettings]
+ServerPassword=
+ServerAdminPassword=adminpassword
+RCONEnabled=True
+RCONPort=27020
+Port=7777
+MaxPlayers=70
+AllowThirdPersonPlayer=True
+ShowMapPlayerLocation=True
+ServerCrosshair=True
+ServerForceNoHUD=False
+EnablePvPGamma=True
+DisableStructureDecayPvE=False
+AllowFlyerCarryPvE=True
+DifficultyOffset=0.5
+HarvestAmountMultiplier=1.0
+XPMultiplier=1.0
+TamingSpeedMultiplier=1.0
+HarvestHealthMultiplier=1.0
+PlayerCharacterWaterDrainMultiplier=1.0
+PlayerCharacterFoodDrainMultiplier=1.0
+DinoCharacterFoodDrainMultiplier=1.0
+PlayerCharacterStaminaDrainMultiplier=1.0
+DinoCharacterStaminaDrainMultiplier=1.0
+PlayerCharacterHealthRecoveryMultiplier=1.0
+DinoCharacterHealthRecoveryMultiplier=1.0
+DayCycleSpeedScale=1.0
+NightTimeSpeedScale=1.0
+DayTimeSpeedScale=1.0
+DinoDamageMultiplier=1.0
+PlayerDamageMultiplier=1.0
+StructureDamageMultiplier=1.0
+PlayerResistanceMultiplier=1.0
+DinoResistanceMultiplier=1.0
+StructureResistanceMultiplier=1.0
+PvEStructureDecayPeriodMultiplier=1.0
+ResourcesRespawnPeriodMultiplier=1.0
+MaxTamedDinos=5000
+
+[SessionSettings]
+SessionName=ARK Server
+
+[/Script/Engine.GameSession]
+MaxPlayers=70
+
+[MessageOfTheDay]
+Message=Welcome to the server!
+Duration=20
+EOF
+
+        # Create default Game.ini
+        cat > "${CONFIG_DIR}/Game.ini" <<'EOF'
+[/Script/ShooterGame.ShooterGameMode]
+bDisableStructurePlacementCollision=False
+bAllowPlatformSaddleMultiFloors=True
+bAllowUnlimitedRespecs=True
+MaxNumberOfPlayersInTribe=70
+MaxAlliancesPerTribe=10
+MaxTribesPerAlliance=10
+EOF
+
+        log_info "Default configuration files created"
     fi
 else
     log_error "Server binary not found after installation"

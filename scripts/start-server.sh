@@ -77,7 +77,7 @@ log_debug "Full server arguments: ${SERVER_ARGS}"
 log_debug "Full command flags: ${CMD_FLAGS}"
 
 # Load build ID from manifest for status tracking
-MANIFEST_FILE="${ARK_SERVER_DIR}/steamapps/appmanifest_${ARK_APP_ID}.acf"
+MANIFEST_FILE="${ARK_BASE_DIR}/steamapps/appmanifest_${ARK_APP_ID}.acf"
 if [ -f "$MANIFEST_FILE" ]; then
     BUILD_ID=$(grep -oP '"buildid"\s+"\K[^"]+' "$MANIFEST_FILE" 2>/dev/null || echo "unknown")
     set_status_meta "build_id" "$BUILD_ID"

@@ -13,6 +13,7 @@ services:
       - "7777:7777/udp"   # Game port
       - "27020:27020/tcp" # RCON port
     volumes:
+      - ark-steamcmd:/home/steam/steamcmd
       - ark-server-data:/home/steam/ark-server
       - ark-cluster-data:/home/steam/ark-cluster
       - ark-logs:/home/steam/logs
@@ -47,6 +48,7 @@ services:
       - LOG_LEVEL=INFO
 
 volumes:
+  ark-steamcmd:
   ark-server-data:
   ark-cluster-data:
   ark-logs:

@@ -13,7 +13,7 @@ log_info "RCON Port: ${RCON_PORT}"
 log_info "Max Players: ${MAX_PLAYERS}"
 
 # Ensure directories exist with correct permissions
-mkdir -p "${ARK_SERVER_DIR}" "${STATUS_DIR}" "${LOGS_DIR}" "${STEAMCMD_DIR}"
+mkdir -p "${ARK_BASE_DIR}" "${STATUS_DIR}" "${LOGS_DIR}" "${STEAMCMD_DIR}"
 
 # Ensure SteamCMD is installed (may be empty if volume is fresh)
 if [ ! -f "${STEAMCMD_DIR}/steamcmd.sh" ]; then

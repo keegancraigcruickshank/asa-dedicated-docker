@@ -33,6 +33,7 @@ services:
       - "7777:7777/udp"
       - "27020:27020/tcp"
     volumes:
+      - ark-steamcmd:/home/steam/steamcmd
       - ark-server-data:/home/steam/ark-server
       - ark-cluster-data:/home/steam/ark-cluster
       - ark-logs:/home/steam/logs
@@ -43,6 +44,7 @@ services:
       - MAX_PLAYERS=70
 
 volumes:
+  ark-steamcmd:
   ark-server-data:
   ark-cluster-data:
   ark-logs:
@@ -59,6 +61,7 @@ docker run -d \
   --name ark-server \
   -p 7777:7777/udp \
   -p 27020:27020/tcp \
+  -v ark-steamcmd:/home/steam/steamcmd \
   -v ark-server-data:/home/steam/ark-server \
   -v ark-cluster-data:/home/steam/ark-cluster \
   -v ark-logs:/home/steam/logs \
@@ -122,9 +125,10 @@ docker run -d \
 
 | Container Path | Description |
 |----------------|-------------|
-| `/home/steam/ark-server` | Server installation and save data (~15GB) |
+| `/home/steam/ark-server` | Server installation base directory (~15GB). Game files are in `steamapps/common/ARK Survival Ascended Dedicated Server/` |
 | `/home/steam/ark-cluster` | Cluster shared data for cross-server transfers |
 | `/home/steam/logs` | Persistent server logs |
+| `/home/steam/steamcmd` | SteamCMD installation (persists updates) |
 | `/home/steam/status` | Status files (JSON) for monitoring |
 
 ## Maps
@@ -210,6 +214,7 @@ services:
       - "7777:7777/udp"
       - "27020:27020/tcp"
     volumes:
+      - ark-island-steamcmd:/home/steam/steamcmd
       - ark-island-data:/home/steam/ark-server
       - ark-cluster-shared:/home/steam/ark-cluster
 
@@ -225,11 +230,14 @@ services:
       - "7778:7778/udp"
       - "27021:27021/tcp"
     volumes:
+      - ark-scorched-steamcmd:/home/steam/steamcmd
       - ark-scorched-data:/home/steam/ark-server
       - ark-cluster-shared:/home/steam/ark-cluster
 
 volumes:
+  ark-island-steamcmd:
   ark-island-data:
+  ark-scorched-steamcmd:
   ark-scorched-data:
   ark-cluster-shared:
 ```
@@ -245,7 +253,24 @@ docker logs -f ark-server
 View ARK server log file:
 
 ```bash
-docker exec ark-server tail -f /home/steam/ark-server/ShooterGame/Saved/Logs/ShooterGame.log
+docker exec ark-server tail -f "/home/steam/ark-server/steamapps/common/ARK Survival Ascended Dedicated Server/ShooterGame/Saved/Logs/ShooterGame.log"
+```
+
+## Configuration Files
+
+On first install, the server creates default configuration files:
+
+| File | Path |
+|------|------|
+| GameUserSettings.ini | `steamapps/common/ARK Survival Ascended Dedicated Server/ShooterGame/Saved/Config/WindowsServer/GameUserSettings.ini` |
+| Game.ini | `steamapps/common/ARK Survival Ascended Dedicated Server/ShooterGame/Saved/Config/WindowsServer/Game.ini` |
+
+These files contain default server settings (harvest rates, taming speeds, etc.). You can edit them directly or mount custom configs:
+
+```yaml
+volumes:
+  - ark-server-data:/home/steam/ark-server
+  - ./my-configs/GameUserSettings.ini:/home/steam/ark-server/steamapps/common/ARK Survival Ascended Dedicated Server/ShooterGame/Saved/Config/WindowsServer/GameUserSettings.ini
 ```
 
 ## Building Locally
