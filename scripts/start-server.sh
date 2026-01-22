@@ -193,6 +193,14 @@ rm -f "${READY_SIGNAL_FILE}"
 
     if [ -f "${ARK_LOG_FILE}" ]; then
         log_info "Monitoring ARK game log: ${ARK_LOG_FILE}"
+
+        # Check if the advertising message is already in the existing log content
+        # (handles race condition where server logs before tail starts)
+        if grep -qE "is now advertising|advertising for join" "${ARK_LOG_FILE}" 2>/dev/null; then
+            log_info "[ARK] Server already advertising (found in existing log)"
+            touch "${READY_SIGNAL_FILE}"
+        fi
+
         tail -n 0 -F "${ARK_LOG_FILE}" 2>/dev/null | while IFS= read -r line; do
             # Skip empty lines
             [ -z "$line" ] && continue
