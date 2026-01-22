@@ -13,6 +13,13 @@ export ARK_APP_ID="2430930"
 
 # Find the ARK server directory dynamically (SteamCMD creates variable folder names)
 find_ark_server_dir() {
+    # First check if installed directly in ARK_BASE_DIR (when using +force_install_dir)
+    if [ -f "${ARK_BASE_DIR}/ShooterGame/Binaries/Win64/ArkAscendedServer.exe" ]; then
+        echo "${ARK_BASE_DIR}"
+        return 0
+    fi
+
+    # Check steamapps/common for traditional SteamCMD installs
     local search_path="${ARK_BASE_DIR}/steamapps/common"
     if [ -d "$search_path" ]; then
         # Look for the ArkAscendedServer.exe to find the correct folder
@@ -31,8 +38,15 @@ find_ark_server_dir() {
             return 0
         fi
     fi
-    # Fallback to expected path
-    echo "${ARK_BASE_DIR}/steamapps/common/ARK Survival Ascended Dedicated Server"
+
+    # Also check if ShooterGame exists directly (even without the exe yet)
+    if [ -d "${ARK_BASE_DIR}/ShooterGame" ]; then
+        echo "${ARK_BASE_DIR}"
+        return 0
+    fi
+
+    # Fallback to base dir (where +force_install_dir installs)
+    echo "${ARK_BASE_DIR}"
 }
 
 # Set ARK_SERVER_DIR - will be updated after installation
