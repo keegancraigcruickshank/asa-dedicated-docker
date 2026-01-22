@@ -146,8 +146,14 @@ xvfb-run --auto-servernum wine "${ARK_EXE}" "${SERVER_ARGS}" ${CMD_FLAGS} 2>&1 |
     while IFS= read -r line; do
         # Filter out noise - most useful output comes from the ARK log file
         case "$line" in
-            # Suppress Wine internals
-            *"fixme:"*|*"err:wineboot"*|*"wine:"*"preloader"*)
+            # Suppress Wine fixme messages (harmless compatibility notices)
+            *"fixme:"*)
+                ;;
+            # Suppress specific Wine boot errors (expected in container)
+            *"err:wineboot"*)
+                ;;
+            # Suppress Wine preloader messages
+            *"wine:"*"preloader"*)
                 ;;
             # Suppress ALL GameAnalytics output (noisy SDK with null bytes)
             *"GameAnalytics"*|*"gameanalytics"*)
@@ -157,6 +163,14 @@ xvfb-run --auto-servernum wine "${ARK_EXE}" "${SERVER_ARGS}" ${CMD_FLAGS} 2>&1 |
                 ;;
             # Suppress lines with null bytes (corrupted GameAnalytics data)
             *$'\x00'*|*"\\u0000"*)
+                ;;
+            # Log Wine errors (important for debugging crashes)
+            *"err:"*)
+                log_error "[Wine] $line"
+                ;;
+            # Log crash/fault messages
+            *"fault"*|*"crash"*|*"exception"*|*"segfault"*|*"Segmentation"*)
+                log_error "[Wine] $line"
                 ;;
             # Log the initial breakpad message
             *"breakpad"*)
@@ -177,11 +191,7 @@ xvfb-run --auto-servernum wine "${ARK_EXE}" "${SERVER_ARGS}" ${CMD_FLAGS} 2>&1 |
 
 WINE_PID=$!
 
-# File to signal when server is ready (advertising)
-READY_SIGNAL_FILE="${STATUS_DIR}/server.ready"
-rm -f "${READY_SIGNAL_FILE}"
-
-# Background task to tail the ARK game log for server messages
+# Background task to tail the ARK game log for server messages (visibility only)
 (
     # Wait for log file to be created
     timeout=120
@@ -194,24 +204,9 @@ rm -f "${READY_SIGNAL_FILE}"
     if [ -f "${ARK_LOG_FILE}" ]; then
         log_info "Monitoring ARK game log: ${ARK_LOG_FILE}"
 
-        # Check if the startup complete message is already in the existing log content
-        # (handles race condition where server logs before tail starts)
-        if grep -qE "Full Startup:" "${ARK_LOG_FILE}" 2>/dev/null; then
-            log_info "[ARK] Server already started (found in existing log)"
-            touch "${READY_SIGNAL_FILE}"
-        fi
-
         tail -n 0 -F "${ARK_LOG_FILE}" 2>/dev/null | while IFS= read -r line; do
             # Skip empty lines
             [ -z "$line" ] && continue
-
-            # Check for server ready (full startup complete) message
-            if [[ "$line" == *"Full Startup:"* ]]; then
-                log_info "[ARK] $line"
-                # Signal that server is ready
-                touch "${READY_SIGNAL_FILE}"
-                continue
-            fi
 
             # Determine log level based on content
             case "$line" in
@@ -236,50 +231,50 @@ set_pid "$WINE_PID"
 log_info "Server process started with PID: ${WINE_PID}"
 
 # Background task to monitor server readiness
+# Uses RCON port as the definitive indicator - when RCON opens, server is truly ready
 (
-    sleep 10  # Give the server time to start writing logs
+    sleep 10  # Give the server time to start
 
-    log_info "Waiting for server startup to complete..."
+    log_info "Waiting for server to be ready..."
 
     timeout=600  # 10 minutes max wait for server to be ready
     elapsed=0
-    rcon_ready=false
 
     while [ $elapsed -lt $timeout ]; do
-        # Check if server startup is complete (ready signal file exists)
-        if [ -f "${READY_SIGNAL_FILE}" ]; then
-            # Also verify RCON is available if enabled
-            if [ "$RCON_ENABLED" = "True" ]; then
-                if nc -z localhost "${RCON_PORT}" 2>/dev/null; then
-                    log_info "Server startup complete and RCON is available"
-                    set_status "$STATUS_RUNNING" "Server fully operational"
-                    exit 0
-                else
-                    # Server started but RCON not ready yet - wait a bit more
-                    if [ "$rcon_ready" = "false" ]; then
-                        log_info "Server started, waiting for RCON..."
-                        rcon_ready=true
-                    fi
-                fi
-            else
-                log_info "Server startup complete"
+        # Check if Wine/server process is still running
+        if ! pgrep -f "ArkAscendedServer" > /dev/null 2>&1; then
+            log_error "Server process has died unexpectedly"
+            set_status "$STATUS_ERROR" "Server process crashed"
+            exit 1
+        fi
+
+        # Check if RCON port is open - this is the definitive sign the server is ready
+        if [ "$RCON_ENABLED" = "True" ]; then
+            if nc -z localhost "${RCON_PORT}" 2>/dev/null; then
+                log_info "Server is ready - RCON port ${RCON_PORT} is now available"
                 set_status "$STATUS_RUNNING" "Server fully operational"
                 exit 0
             fi
+        else
+            # Without RCON, check if game port is responding
+            if nc -z -u localhost "${GAME_PORT}" 2>/dev/null; then
+                log_info "Server is ready - Game port ${GAME_PORT} is now available"
+                set_status "$STATUS_RUNNING" "Server fully operational"
+                exit 0
+            fi
+        fi
+
+        # Log progress every 30 seconds
+        if [ $((elapsed % 30)) -eq 0 ] && [ $elapsed -gt 0 ]; then
+            log_info "Still waiting for server... (${elapsed}s elapsed)"
         fi
 
         sleep 5
         elapsed=$((elapsed + 5))
     done
 
-    # Timeout - check if at least RCON is available
-    if [ "$RCON_ENABLED" = "True" ] && nc -z localhost "${RCON_PORT}" 2>/dev/null; then
-        log_warn "Server did not report startup within ${timeout}s, but RCON is available"
-        set_status "$STATUS_RUNNING" "Server running (startup check timed out)"
-    else
-        log_warn "Server readiness check timed out after ${timeout}s"
-        set_status "$STATUS_RUNNING" "Server running (readiness check timed out)"
-    fi
+    log_warn "Server readiness check timed out after ${timeout}s"
+    set_status "$STATUS_RUNNING" "Server running (readiness check timed out)"
 ) &
 
 # Wait for the server process
