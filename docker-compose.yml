@@ -1,0 +1,52 @@
+# ARK: Survival Ascended Dedicated Server
+# Example docker-compose configuration
+
+services:
+  ark-server:
+    image: cloudpixelstudios/asa-dedicated-docker:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ark-server
+    restart: unless-stopped
+    ports:
+      - "7777:7777/udp"   # Game port
+      - "27020:27020/tcp" # RCON port
+    volumes:
+      - ark-server-data:/home/steam/ark-server
+      - ark-cluster-data:/home/steam/ark-cluster
+      - ark-logs:/home/steam/logs
+    environment:
+      # Server Settings
+      - SERVER_NAME=My ARK Server
+      - SERVER_PASSWORD=
+      - ADMIN_PASSWORD=changeme
+      - MAP=TheIsland_WP
+      - MAX_PLAYERS=70
+
+      # Network Settings
+      - GAME_PORT=7777
+      - RCON_PORT=27020
+      - RCON_ENABLED=True
+
+      # Mods (comma-separated CurseForge mod IDs)
+      - MODS=
+
+      # Additional server command line arguments
+      - CUSTOM_SERVER_ARGS=
+
+      # Update Settings
+      - AUTO_UPDATE=true
+      - SKIP_VALIDATION=false
+
+      # Cluster Settings (for multi-server clusters)
+      - CLUSTER_ID=
+      - CLUSTER_DIR_OVERRIDE=
+
+      # Logging
+      - LOG_LEVEL=INFO
+
+volumes:
+  ark-server-data:
+  ark-cluster-data:
+  ark-logs:
