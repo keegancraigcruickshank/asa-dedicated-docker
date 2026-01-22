@@ -191,7 +191,11 @@ xvfb-run --auto-servernum wine "${ARK_EXE}" "${SERVER_ARGS}" ${CMD_FLAGS} 2>&1 |
 
 WINE_PID=$!
 
-# Background task to tail the ARK game log for server messages (visibility only)
+# File to signal when server is ready (advertising)
+READY_SIGNAL_FILE="${STATUS_DIR}/server.ready"
+rm -f "${READY_SIGNAL_FILE}"
+
+# Background task to tail the ARK game log for server messages
 (
     # Wait for log file to be created
     timeout=120
@@ -204,9 +208,22 @@ WINE_PID=$!
     if [ -f "${ARK_LOG_FILE}" ]; then
         log_info "Monitoring ARK game log: ${ARK_LOG_FILE}"
 
+        # Check if already advertising (handles race condition)
+        if grep -qE "advertising for join" "${ARK_LOG_FILE}" 2>/dev/null; then
+            log_info "[ARK] Server already advertising (found in existing log)"
+            touch "${READY_SIGNAL_FILE}"
+        fi
+
         tail -n 0 -F "${ARK_LOG_FILE}" 2>/dev/null | while IFS= read -r line; do
             # Skip empty lines
             [ -z "$line" ] && continue
+
+            # Check for server ready (advertising) message
+            if [[ "$line" == *"advertising for join"* ]]; then
+                log_info "[ARK] $line"
+                touch "${READY_SIGNAL_FILE}"
+                continue
+            fi
 
             # Determine log level based on content
             case "$line" in
@@ -231,11 +248,10 @@ set_pid "$WINE_PID"
 log_info "Server process started with PID: ${WINE_PID}"
 
 # Background task to monitor server readiness
-# Uses RCON port as the definitive indicator - when RCON opens, server is truly ready
 (
     sleep 10  # Give the server time to start
 
-    log_info "Waiting for server to be ready..."
+    log_info "Waiting for server to be ready (advertising for join)..."
 
     timeout=600  # 10 minutes max wait for server to be ready
     elapsed=0
@@ -248,24 +264,15 @@ log_info "Server process started with PID: ${WINE_PID}"
             exit 1
         fi
 
-        # Check if RCON port is open - this is the definitive sign the server is ready
-        if [ "$RCON_ENABLED" = "True" ]; then
-            if nc -z localhost "${RCON_PORT}" 2>/dev/null; then
-                log_info "Server is ready - RCON port ${RCON_PORT} is now available"
-                set_status "$STATUS_RUNNING" "Server fully operational"
-                exit 0
-            fi
-        else
-            # Without RCON, check if game port is responding
-            if nc -z -u localhost "${GAME_PORT}" 2>/dev/null; then
-                log_info "Server is ready - Game port ${GAME_PORT} is now available"
-                set_status "$STATUS_RUNNING" "Server fully operational"
-                exit 0
-            fi
+        # Check if server is advertising (ready signal file exists)
+        if [ -f "${READY_SIGNAL_FILE}" ]; then
+            log_info "Server is now advertising for join"
+            set_status "$STATUS_RUNNING" "Server fully operational"
+            exit 0
         fi
 
-        # Log progress every 30 seconds
-        if [ $((elapsed % 30)) -eq 0 ] && [ $elapsed -gt 0 ]; then
+        # Log progress every 60 seconds
+        if [ $((elapsed % 60)) -eq 0 ] && [ $elapsed -gt 0 ]; then
             log_info "Still waiting for server... (${elapsed}s elapsed)"
         fi
 
