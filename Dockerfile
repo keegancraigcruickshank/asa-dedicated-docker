@@ -107,10 +107,11 @@ ENV SERVER_NAME="ARK Server" \
 EXPOSE 7777/udp 27020/tcp
 
 # Volumes
+# /home/steam/steamcmd - SteamCMD installation (allows self-updates to persist)
 # /home/steam/ark-server - Server installation and data
 # /home/steam/ark-cluster - Cluster shared data for cross-ark transfers
 # /home/steam/logs - Persistent logs
-VOLUME ["/home/steam/ark-server", "/home/steam/ark-cluster", "/home/steam/logs"]
+VOLUME ["/home/steam/steamcmd", "/home/steam/ark-server", "/home/steam/ark-cluster", "/home/steam/logs"]
 
 # Health check - checks the status file written by our scripts
 # This allows the manager to know the true state of the server
