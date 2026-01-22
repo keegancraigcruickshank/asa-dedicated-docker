@@ -42,11 +42,15 @@ ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8
 
 # Install Wine from WineHQ
+# Using --no-install-recommends to significantly reduce image size (~500MB savings)
 RUN mkdir -pm755 /etc/apt/keyrings && \
     wget -O /etc/apt/keyrings/winehq-archive.key https://dl.winehq.org/wine-builds/winehq.key && \
     wget -NP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/debian/dists/bookworm/winehq-bookworm.sources && \
     apt-get update && \
-    apt-get install -y --install-recommends winehq-stable && \
+    apt-get install -y --no-install-recommends winehq-stable && \
+    # Remove packages only needed for adding Wine repository
+    apt-get purge -y gnupg2 software-properties-common && \
+    apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
 
 # Create steam user and directories
