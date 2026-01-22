@@ -194,10 +194,10 @@ rm -f "${READY_SIGNAL_FILE}"
     if [ -f "${ARK_LOG_FILE}" ]; then
         log_info "Monitoring ARK game log: ${ARK_LOG_FILE}"
 
-        # Check if the advertising message is already in the existing log content
+        # Check if the startup complete message is already in the existing log content
         # (handles race condition where server logs before tail starts)
-        if grep -qE "is now advertising|advertising for join" "${ARK_LOG_FILE}" 2>/dev/null; then
-            log_info "[ARK] Server already advertising (found in existing log)"
+        if grep -qE "Full Startup:" "${ARK_LOG_FILE}" 2>/dev/null; then
+            log_info "[ARK] Server already started (found in existing log)"
             touch "${READY_SIGNAL_FILE}"
         fi
 
@@ -205,8 +205,8 @@ rm -f "${READY_SIGNAL_FILE}"
             # Skip empty lines
             [ -z "$line" ] && continue
 
-            # Check for server ready (advertising) message
-            if [[ "$line" == *"is now advertising"* ]] || [[ "$line" == *"advertising for join"* ]]; then
+            # Check for server ready (full startup complete) message
+            if [[ "$line" == *"Full Startup:"* ]]; then
                 log_info "[ARK] $line"
                 # Signal that server is ready
                 touch "${READY_SIGNAL_FILE}"
@@ -239,30 +239,30 @@ log_info "Server process started with PID: ${WINE_PID}"
 (
     sleep 10  # Give the server time to start writing logs
 
-    log_info "Waiting for server to be ready (advertising for connections)..."
+    log_info "Waiting for server startup to complete..."
 
     timeout=600  # 10 minutes max wait for server to be ready
     elapsed=0
     rcon_ready=false
 
     while [ $elapsed -lt $timeout ]; do
-        # Check if server is advertising (ready signal file exists)
+        # Check if server startup is complete (ready signal file exists)
         if [ -f "${READY_SIGNAL_FILE}" ]; then
             # Also verify RCON is available if enabled
             if [ "$RCON_ENABLED" = "True" ]; then
                 if nc -z localhost "${RCON_PORT}" 2>/dev/null; then
-                    log_info "Server is now advertising and RCON is available"
+                    log_info "Server startup complete and RCON is available"
                     set_status "$STATUS_RUNNING" "Server fully operational"
                     exit 0
                 else
-                    # Server advertising but RCON not ready yet - wait a bit more
+                    # Server started but RCON not ready yet - wait a bit more
                     if [ "$rcon_ready" = "false" ]; then
-                        log_info "Server is advertising, waiting for RCON..."
+                        log_info "Server started, waiting for RCON..."
                         rcon_ready=true
                     fi
                 fi
             else
-                log_info "Server is now advertising"
+                log_info "Server startup complete"
                 set_status "$STATUS_RUNNING" "Server fully operational"
                 exit 0
             fi
@@ -274,8 +274,8 @@ log_info "Server process started with PID: ${WINE_PID}"
 
     # Timeout - check if at least RCON is available
     if [ "$RCON_ENABLED" = "True" ] && nc -z localhost "${RCON_PORT}" 2>/dev/null; then
-        log_warn "Server did not advertise within ${timeout}s, but RCON is available"
-        set_status "$STATUS_RUNNING" "Server running (advertising check timed out)"
+        log_warn "Server did not report startup within ${timeout}s, but RCON is available"
+        set_status "$STATUS_RUNNING" "Server running (startup check timed out)"
     else
         log_warn "Server readiness check timed out after ${timeout}s"
         set_status "$STATUS_RUNNING" "Server running (readiness check timed out)"
