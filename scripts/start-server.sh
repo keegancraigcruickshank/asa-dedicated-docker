@@ -48,19 +48,24 @@ if [ -n "$MODS" ]; then
 fi
 
 # Build command line flags
-CMD_FLAGS="-NoBattlEye -crossplay -servergamelog -servergamelogincludetribelogs"
+# -port is required for ASA to advertise the correct port for cluster transfers
+CMD_FLAGS="-NoBattlEye -crossplay -servergamelog -servergamelogincludetribelogs -port=${GAME_PORT}"
 
 # Add cluster settings if configured
 if [ -d "${CLUSTER_DIR}" ] && [ -n "$CLUSTER_ID" ]; then
     log_info "  Cluster Mode: Enabled"
     log_info "  Cluster ID: ${CLUSTER_ID}"
 
-    # Use custom cluster dir override if specified, otherwise use Wine path
+    # Convert Linux path to Wine path (Z: drive maps to Linux root)
+    # ARK runs under Wine and expects Windows-style paths
     if [ -n "$CLUSTER_DIR_OVERRIDE" ]; then
-        CMD_FLAGS="${CMD_FLAGS} -ClusterDirOverride=${CLUSTER_DIR_OVERRIDE}"
+        # Convert Linux path to Wine Z: drive path
+        WINE_CLUSTER_PATH="Z:$(echo "$CLUSTER_DIR_OVERRIDE" | sed 's|/|\\|g')"
     else
-        CMD_FLAGS="${CMD_FLAGS} -ClusterDirOverride=/home/steam/ark-cluster"
+        WINE_CLUSTER_PATH="Z:\\home\\steam\\ark-cluster"
     fi
+    CMD_FLAGS="${CMD_FLAGS} -ClusterDirOverride=\"${WINE_CLUSTER_PATH}\""
+    log_info "  Cluster Dir: ${WINE_CLUSTER_PATH}"
 
     CMD_FLAGS="${CMD_FLAGS} -clusterid=${CLUSTER_ID}"
     # Prevent transfers from other clusters/singleplayer for security
