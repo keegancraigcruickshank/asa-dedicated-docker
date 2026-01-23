@@ -4,6 +4,8 @@
 # Directories
 export STEAMCMD_DIR="/home/steam/steamcmd"
 export ARK_BASE_DIR="/home/steam/ark-server"
+# Use standard Steam library structure - game installs to steamapps/common/<game name>
+export ARK_SERVER_DIR="${ARK_BASE_DIR}/steamapps/common/ARK Survival Ascended Dedicated Server"
 export STATUS_DIR="/home/steam/status"
 export LOGS_DIR="/home/steam/logs"
 export CLUSTER_DIR="/home/steam/ark-cluster"
@@ -11,52 +13,11 @@ export CLUSTER_DIR="/home/steam/ark-cluster"
 # ARK App ID for SteamCMD
 export ARK_APP_ID="2430930"
 
-# Find the ARK server directory dynamically (SteamCMD creates variable folder names)
-find_ark_server_dir() {
-    # First check if installed directly in ARK_BASE_DIR (when using +force_install_dir)
-    if [ -f "${ARK_BASE_DIR}/ShooterGame/Binaries/Win64/ArkAscendedServer.exe" ]; then
-        echo "${ARK_BASE_DIR}"
-        return 0
-    fi
-
-    # Check steamapps/common for traditional SteamCMD installs
-    local search_path="${ARK_BASE_DIR}/steamapps/common"
-    if [ -d "$search_path" ]; then
-        # Look for the ArkAscendedServer.exe to find the correct folder
-        local exe_path
-        exe_path=$(find "$search_path" -name "ArkAscendedServer.exe" -type f 2>/dev/null | head -1)
-        if [ -n "$exe_path" ]; then
-            # Return the directory containing ShooterGame (3 levels up from exe)
-            dirname "$(dirname "$(dirname "$(dirname "$exe_path")")")"
-            return 0
-        fi
-        # Try finding any folder with ShooterGame
-        local shooter_path
-        shooter_path=$(find "$search_path" -type d -name "ShooterGame" 2>/dev/null | head -1)
-        if [ -n "$shooter_path" ]; then
-            dirname "$shooter_path"
-            return 0
-        fi
-    fi
-
-    # Also check if ShooterGame exists directly (even without the exe yet)
-    if [ -d "${ARK_BASE_DIR}/ShooterGame" ]; then
-        echo "${ARK_BASE_DIR}"
-        return 0
-    fi
-
-    # Fallback to base dir (where +force_install_dir installs)
-    echo "${ARK_BASE_DIR}"
-}
-
-# Set ARK_SERVER_DIR - will be updated after installation
-export ARK_SERVER_DIR
-ARK_SERVER_DIR=$(find_ark_server_dir)
-
 # Status file paths
 export STATUS_FILE="${STATUS_DIR}/server.status"
 export PID_FILE="${STATUS_DIR}/server.pid"
 export UPDATE_STATUS_FILE="${STATUS_DIR}/update.status"
+export STEAMCMD_UPDATED_FLAG="${STEAMCMD_DIR}/.updated"
 
 # Log levels
 LOG_LEVEL_DEBUG=0
@@ -264,8 +225,6 @@ clear_pid() {
 
 # Check if server binary exists
 server_installed() {
-    # Re-detect ARK_SERVER_DIR in case it was just installed
-    ARK_SERVER_DIR=$(find_ark_server_dir)
     [ -f "${ARK_SERVER_DIR}/ShooterGame/Binaries/Win64/ArkAscendedServer.exe" ]
 }
 
@@ -306,4 +265,49 @@ print_banner() {
     echo "=========================================="
     echo "$1"
     echo "=========================================="
+}
+
+# Update SteamCMD itself (separate from game updates)
+# This prevents exit code 8 errors during game installation
+update_steamcmd() {
+    local max_retries=3
+    local retry=0
+
+    # Skip if already updated this session
+    if [ -f "${STEAMCMD_UPDATED_FLAG}" ]; then
+        log_debug "SteamCMD already updated this session"
+        return 0
+    fi
+
+    log_info "Updating SteamCMD client..."
+    set_status "$STATUS_UPDATING_STEAMCMD" "Updating SteamCMD client"
+
+    while [ $retry -lt $max_retries ]; do
+        # Run SteamCMD with just +quit to trigger self-update
+        ${STEAMCMD_DIR}/steamcmd.sh +quit 2>&1 | while IFS= read -r line; do
+            if [[ "$line" == *"Downloading"* ]]; then
+                log_info "[SteamCMD] $line"
+            elif [[ "$line" == *"Error"* ]] || [[ "$line" == *"FAILED"* ]]; then
+                log_error "[SteamCMD] $line"
+            else
+                log_debug "[SteamCMD] $line"
+            fi
+        done
+
+        local exit_code=${PIPESTATUS[0]}
+        if [ $exit_code -eq 0 ]; then
+            log_info "SteamCMD updated successfully"
+            touch "${STEAMCMD_UPDATED_FLAG}"
+            return 0
+        fi
+
+        retry=$((retry + 1))
+        if [ $retry -lt $max_retries ]; then
+            log_warn "SteamCMD update failed (exit code: $exit_code), retrying in 5 seconds... (attempt $retry/$max_retries)"
+            sleep 5
+        fi
+    done
+
+    log_error "SteamCMD update failed after $max_retries attempts"
+    return 1
 }

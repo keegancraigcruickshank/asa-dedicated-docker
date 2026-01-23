@@ -77,7 +77,7 @@ log_debug "Full server arguments: ${SERVER_ARGS}"
 log_debug "Full command flags: ${CMD_FLAGS}"
 
 # Load build ID from manifest for status tracking
-MANIFEST_FILE="${ARK_BASE_DIR}/steamapps/appmanifest_${ARK_APP_ID}.acf"
+MANIFEST_FILE="${ARK_SERVER_DIR}/steamapps/appmanifest_${ARK_APP_ID}.acf"
 if [ -f "$MANIFEST_FILE" ]; then
     BUILD_ID=$(grep -oP '"buildid"\s+"\K[^"]+' "$MANIFEST_FILE" 2>/dev/null || echo "unknown")
     set_status_meta "build_id" "$BUILD_ID"
@@ -191,9 +191,10 @@ xvfb-run --auto-servernum wine "${ARK_EXE}" "${SERVER_ARGS}" ${CMD_FLAGS} 2>&1 |
 
 WINE_PID=$!
 
-# File to signal when server is ready (advertising)
+# Signal files for server state tracking
 READY_SIGNAL_FILE="${STATUS_DIR}/server.ready"
-rm -f "${READY_SIGNAL_FILE}"
+STARTUP_COMPLETE_FILE="${STATUS_DIR}/server.startup_complete"
+rm -f "${READY_SIGNAL_FILE}" "${STARTUP_COMPLETE_FILE}"
 
 # Background task to tail the ARK game log for server messages
 (
@@ -208,20 +209,86 @@ rm -f "${READY_SIGNAL_FILE}"
     if [ -f "${ARK_LOG_FILE}" ]; then
         log_info "Monitoring ARK game log: ${ARK_LOG_FILE}"
 
-        # Check if already advertising (handles race condition)
+        # Check if already past startup phases (handles race condition)
+        if grep -qE "Full Startup:" "${ARK_LOG_FILE}" 2>/dev/null; then
+            log_debug "[ARK] Full Startup already completed (found in existing log)"
+            touch "${STARTUP_COMPLETE_FILE}"
+        fi
         if grep -qE "advertising for join" "${ARK_LOG_FILE}" 2>/dev/null; then
             log_info "[ARK] Server already advertising (found in existing log)"
             touch "${READY_SIGNAL_FILE}"
         fi
 
+        # Variables for multi-line JSON accumulation
+        json_buffer=""
+        brace_depth=0
+        in_json=false
+
         tail -n 0 -F "${ARK_LOG_FILE}" 2>/dev/null | while IFS= read -r line; do
             # Skip empty lines
             [ -z "$line" ] && continue
+
+            # Check for Full Startup message (indicates server initialization complete)
+            if [[ "$line" == *"Full Startup:"* ]]; then
+                log_info "[ARK] $line"
+                touch "${STARTUP_COMPLETE_FILE}"
+                continue
+            fi
 
             # Check for server ready (advertising) message
             if [[ "$line" == *"advertising for join"* ]]; then
                 log_info "[ARK] $line"
                 touch "${READY_SIGNAL_FILE}"
+                continue
+            fi
+
+            # Handle multi-line JSON objects - accumulate and log as single line
+            # Count opening and closing braces
+            open_braces=$(echo "$line" | tr -cd '{' | wc -c)
+            close_braces=$(echo "$line" | tr -cd '}' | wc -c)
+
+            # Detect start of JSON object
+            if [[ "$line" == *"{"* ]] && [ "$in_json" = false ]; then
+                in_json=true
+                json_buffer="$line"
+                brace_depth=$((open_braces - close_braces))
+
+                # Single-line JSON object
+                if [ $brace_depth -eq 0 ]; then
+                    in_json=false
+                    # Log the single-line JSON normally
+                    log_info "[ARK] $json_buffer"
+                    json_buffer=""
+                fi
+                continue
+            fi
+
+            # Continue accumulating JSON
+            if [ "$in_json" = true ]; then
+                json_buffer="$json_buffer $line"
+                brace_depth=$((brace_depth + open_braces - close_braces))
+
+                # JSON object complete
+                if [ $brace_depth -le 0 ]; then
+                    in_json=false
+                    # Log accumulated JSON as single line (compact)
+                    compact_json=$(echo "$json_buffer" | tr '\n' ' ' | sed 's/  */ /g')
+                    log_info "[ARK] $compact_json"
+                    json_buffer=""
+                    brace_depth=0
+                fi
+                continue
+            fi
+
+            # Filter and transform specific CFCore messages
+            # Skip "Couldn't load mods library" - harmless noise when no mods installed
+            if [[ "$line" == *"Couldn't load mods library from disk"* ]]; then
+                continue
+            fi
+
+            # Replace cryptic machine ID error with friendly message
+            if [[ "$line" == *"No machine id was found"* ]]; then
+                log_info "[ARK] CurseForge telemetry disabled (no machine ID in container - this is normal)"
                 continue
             fi
 
@@ -249,12 +316,9 @@ log_info "Server process started with PID: ${WINE_PID}"
 
 # Background task to monitor server readiness
 (
-    sleep 10  # Give the server time to start
-
-    log_info "Waiting for server to be ready (advertising for join)..."
-
     timeout=600  # 10 minutes max wait for server to be ready
     elapsed=0
+    logged_waiting=false
 
     while [ $elapsed -lt $timeout ]; do
         # Check if Wine/server process is still running
@@ -266,13 +330,19 @@ log_info "Server process started with PID: ${WINE_PID}"
 
         # Check if server is advertising (ready signal file exists)
         if [ -f "${READY_SIGNAL_FILE}" ]; then
-            log_info "Server is now advertising for join"
+            log_info "Server is now ready"
             set_status "$STATUS_RUNNING" "Server fully operational"
             exit 0
         fi
 
-        # Log progress every 60 seconds
-        if [ $((elapsed % 60)) -eq 0 ] && [ $elapsed -gt 0 ]; then
+        # Only log "Waiting for server to be ready" after Full Startup is complete
+        if [ -f "${STARTUP_COMPLETE_FILE}" ] && [ "$logged_waiting" = false ]; then
+            log_info "Waiting for server to be ready"
+            logged_waiting=true
+        fi
+
+        # Log progress every 60 seconds (only after startup complete)
+        if [ "$logged_waiting" = true ] && [ $((elapsed % 60)) -eq 0 ] && [ $elapsed -gt 0 ]; then
             log_info "Still waiting for server... (${elapsed}s elapsed)"
         fi
 
