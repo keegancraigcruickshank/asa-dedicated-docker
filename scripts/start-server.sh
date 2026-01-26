@@ -42,14 +42,14 @@ if [ -n "$ADMIN_PASSWORD" ]; then
     log_info "  Admin Password: [set]"
 fi
 
-# Add mod list if specified
-if [ -n "$MODS" ]; then
-    SERVER_ARGS="${SERVER_ARGS}?-mods=${MODS}"
-fi
-
 # Build command line flags
 # -port is required for ASA to advertise the correct port for cluster transfers
 CMD_FLAGS="-NoBattlEye -crossplay -servergamelog -servergamelogincludetribelogs -port=${GAME_PORT}"
+
+# Add mod list if specified
+if [ -n "$MODS" ]; then
+    CMD_FLAGS="${CMD_FLAGS} -mods=${MODS}"
+fi
 
 # Add cluster settings if configured
 if [ -d "${CLUSTER_DIR}" ] && [ -n "$CLUSTER_ID" ]; then
