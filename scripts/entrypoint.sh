@@ -34,6 +34,15 @@ shutdown_handler() {
     log_info "Received shutdown signal"
     set_status "$STATUS_STOPPING" "Shutdown signal received"
 
+    # Kill any running SteamCMD processes (if stopped during update/install)
+    STEAM_PIDS=$(pgrep -f "steamcmd" 2>/dev/null || true)
+    if [ -n "$STEAM_PIDS" ]; then
+        log_info "Stopping SteamCMD processes"
+        kill -TERM $STEAM_PIDS 2>/dev/null || true
+        sleep 2
+        kill -KILL $STEAM_PIDS 2>/dev/null || true
+    fi
+
     PID=$(get_pid)
     if [ -n "$PID" ] && is_process_running "$PID"; then
         log_info "Stopping server process (PID: ${PID})"

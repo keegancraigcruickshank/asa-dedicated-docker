@@ -41,6 +41,32 @@ log_info "Install directory: ${ARK_SERVER_DIR}"
 # Ensure the directory exists
 mkdir -p "${ARK_SERVER_DIR}"
 
+# Remove the appmanifest and SteamCMD download cache to force a fresh update.
+# When a new ARK build drops, Steam's CDN revokes old depot manifests. If the
+# appmanifest still references the old manifest ID (via InstalledDepots), SteamCMD
+# gets "Access Denied" and fails with exit code 8 / state 0x6. The same stale state
+# occurs when a container is stopped mid-download. Deleting the manifest forces
+# SteamCMD to fetch the latest from scratch — only changed files are re-downloaded.
+# Game saves (ShooterGame/Saved/) are not affected.
+purge_manifest() {
+    local manifest_file="${ARK_SERVER_DIR}/steamapps/appmanifest_${ARK_APP_ID}.acf"
+    rm -f "$manifest_file"
+    rm -rf "${ARK_SERVER_DIR}/steamapps/downloading/${ARK_APP_ID}"
+    rm -rf "${ARK_SERVER_DIR}/steamapps/temp/${ARK_APP_ID}"
+}
+
+# On startup, check if a previous run left the manifest in a dirty state.
+# StateFlags 0 and 4 are clean (fully installed). Anything else (e.g. 6 =
+# UpdateRequired+UpdateStarted) means an update was interrupted.
+MANIFEST_FILE="${ARK_SERVER_DIR}/steamapps/appmanifest_${ARK_APP_ID}.acf"
+if [ -f "$MANIFEST_FILE" ]; then
+    STATE_FLAGS=$(grep -oP '"StateFlags"\s+"\K[^"]+' "$MANIFEST_FILE" 2>/dev/null || echo "0")
+    if [ "$STATE_FLAGS" != "0" ] && [ "$STATE_FLAGS" != "4" ]; then
+        log_warn "Detected stale manifest (StateFlags=$STATE_FLAGS), purging to force fresh update"
+        purge_manifest
+    fi
+fi
+
 # Function to run SteamCMD app_update with retry logic
 run_steamcmd_update() {
     local max_retries=3
@@ -132,6 +158,14 @@ run_steamcmd_update() {
         retry=$((retry + 1))
         if [ $retry -lt $max_retries ]; then
             log_warn "SteamCMD app_update failed (exit code: $exit_code), retrying in 10 seconds... (attempt $retry/$max_retries)"
+
+            # Exit code 8 = content issue (often "Access Denied" for a revoked depot manifest).
+            # Purge the manifest so the next attempt fetches the latest from scratch.
+            if [ $exit_code -eq 8 ]; then
+                log_warn "Exit code 8 detected, purging manifest to fetch latest from Steam CDN"
+                purge_manifest
+            fi
+
             sleep 10
         else
             log_error "SteamCMD failed with exit code: ${exit_code} after $max_retries attempts"
