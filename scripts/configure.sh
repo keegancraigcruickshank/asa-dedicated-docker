@@ -40,17 +40,12 @@ else
     sed -i "/^\[ServerSettings\]/a Port=${GAME_PORT}\nRCONPort=${RCON_PORT}" "${GAME_INI}"
 
     # Update MaxPlayers in [/Script/Engine.GameSession] section
-    if grep -q "^\[/Script/Engine.GameSession\]" "${GAME_INI}"; then
-        # Section exists - update or add MaxPlayers
-        if grep -q "^MaxPlayers=" "${GAME_INI}"; then
-            sed -i "s/^MaxPlayers=.*/MaxPlayers=${MAX_PLAYERS}/" "${GAME_INI}"
-        else
-            sed -i "/^\[\/Script\/Engine.GameSession\]/a MaxPlayers=${MAX_PLAYERS}" "${GAME_INI}"
-        fi
-    else
-        # Section doesn't exist - add it
-        echo -e "\n[/Script/Engine.GameSession]\nMaxPlayers=${MAX_PLAYERS}" >> "${GAME_INI}"
-    fi
+    # Remove the section and its MaxPlayers line, then recreate
+    # This ensures we always have the correct value regardless of file state
+    sed -i '/^\[\/Script\/Engine.GameSession\]/d' "${GAME_INI}"
+    sed -i '/^MaxPlayers=/d' "${GAME_INI}"
+    # Add fresh section with correct value at end of file
+    echo -e "\n[/Script/Engine.GameSession]\nMaxPlayers=${MAX_PLAYERS}" >> "${GAME_INI}"
 fi
 
 log_info "Configured: Game Port=${GAME_PORT}, RCON Port=${RCON_PORT}, Max Players=${MAX_PLAYERS}"
