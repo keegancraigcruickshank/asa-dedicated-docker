@@ -15,19 +15,20 @@ log_info "Max Players: ${MAX_PLAYERS}"
 # Ensure directories exist with correct permissions
 mkdir -p "${ARK_BASE_DIR}" "${STATUS_DIR}" "${LOGS_DIR}" "${STEAMCMD_DIR}"
 
+# Clear any stale status file immediately so a restart doesn't
+# briefly report the previous run's status (e.g. "running")
+rm -f "${STATUS_FILE}" "${STATUS_META_FILE}"
+
+# Initialize uptime tracking and status
+init_start_time
+set_status "$STATUS_INITIALIZING" "Container starting"
+
 # Ensure SteamCMD is installed (may be empty if volume is fresh)
 if [ ! -f "${STEAMCMD_DIR}/steamcmd.sh" ]; then
     log_info "SteamCMD not found, downloading..."
     curl -sqL "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" | tar zxf - -C "${STEAMCMD_DIR}"
     log_info "SteamCMD installed"
 fi
-
-# Initialize uptime tracking
-init_start_time
-clear_status_meta
-
-# Initialize status
-set_status "$STATUS_INITIALIZING" "Container starting"
 
 # Handle graceful shutdown
 shutdown_handler() {
